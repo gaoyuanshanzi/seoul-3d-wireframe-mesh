@@ -1,7 +1,11 @@
 import { useState, useMemo, useCallback } from 'react';
 import type { SeoulGeoJson } from './types';
 import seoulDistrictsJson from './data/seoul_districts.json';
-import { parseSeoulGeoJson, INITIAL_DISTRICT_VALUES } from './utils/geoUtils';
+import { 
+  parseSeoulGeoJson, 
+  INITIAL_RAW_DISTRICT_VALUES, 
+  normalizeDistrictValues 
+} from './utils/geoUtils';
 import { DistrictTable } from './components/DistrictTable';
 import { Map3DCanvas } from './components/Map3DCanvas';
 
@@ -16,25 +20,30 @@ export function App() {
     return parsedDistricts.map(d => d.name);
   }, [parsedDistricts]);
 
-  // 구별 수치 데이터 상태 (0 ~ 100)
-  const [districtValues, setDistrictValues] = useState<Record<string, number>>(() => {
-    return { ...INITIAL_DISTRICT_VALUES };
+  // 구별 실제 데이터 상태 (Raw Data: 자유로운 수치 입력 가능)
+  const [rawDistrictValues, setRawDistrictValues] = useState<Record<string, number>>(() => {
+    return { ...INITIAL_RAW_DISTRICT_VALUES };
   });
+
+  // 0~100 스케일 자동 정규화 계산 (최댓값 100, 최솟값 0)
+  const { normalized, minRaw, maxRaw } = useMemo(() => {
+    return normalizeDistrictValues(rawDistrictValues);
+  }, [rawDistrictValues]);
 
   // 현재 선택/포커스된 구
   const [selectedDistrict, setSelectedDistrict] = useState<string | null>(null);
 
-  // 개별 수치 변경 핸들러
-  const handleValueChange = useCallback((district: string, value: number) => {
-    setDistrictValues(prev => ({
+  // 개별 실제 데이터 변경 핸들러
+  const handleRawValueChange = useCallback((district: string, value: number) => {
+    setRawDistrictValues(prev => ({
       ...prev,
       [district]: value,
     }));
   }, []);
 
-  // 다중/일괄 수치 변경 핸들러 (스프레드시트 세로 붙여넣기 등)
-  const handleBatchValueChange = useCallback((newValues: Record<string, number>) => {
-    setDistrictValues(prev => ({
+  // 다중/일괄 실제 데이터 변경 핸들러 (스프레드시트 세로 붙여넣기 등)
+  const handleBatchRawValueChange = useCallback((newValues: Record<string, number>) => {
+    setRawDistrictValues(prev => ({
       ...prev,
       ...newValues,
     }));
@@ -42,28 +51,32 @@ export function App() {
 
   // 기본값 초기화
   const handleReset = useCallback(() => {
-    setDistrictValues({ ...INITIAL_DISTRICT_VALUES });
+    setRawDistrictValues({ ...INITIAL_RAW_DISTRICT_VALUES });
     setSelectedDistrict(null);
   }, []);
 
-  // 랜덤 데이터 채우기 (20 ~ 95 범위의 랜덤 정수)
+  // 랜덤 데이터 채우기 (자유로운 실제 데이터 스케일: 100,000 ~ 700,000)
   const handleRandomize = useCallback(() => {
     const nextValues: Record<string, number> = {};
     districtNames.forEach(name => {
-      nextValues[name] = Math.floor(Math.random() * 76) + 20;
+      // 10만 ~ 70만 단위의 현실감 있는 통계 수치 생성
+      nextValues[name] = Math.floor(Math.random() * 600 + 100) * 1000;
     });
-    setDistrictValues(nextValues);
+    setRawDistrictValues(nextValues);
   }, [districtNames]);
 
   return (
     <div className="w-screen h-screen flex flex-col md:flex-row overflow-hidden bg-white text-slate-900">
-      {/* 1. 왼쪽 50% 영역: 스프레드시트 격자형 데이터 입력 패널 */}
+      {/* 1. 왼쪽 50% 영역: 3열 스마트 스프레드시트 데이터 입력 패널 */}
       <div className="w-full md:w-1/2 h-1/2 md:h-full flex-shrink-0 z-10 shadow-lg md:shadow-none">
         <DistrictTable
           districts={districtNames}
-          districtValues={districtValues}
-          onValueChange={handleValueChange}
-          onBatchValueChange={handleBatchValueChange}
+          rawValues={rawDistrictValues}
+          normalizedValues={normalized}
+          minRaw={minRaw}
+          maxRaw={maxRaw}
+          onRawValueChange={handleRawValueChange}
+          onBatchRawValueChange={handleBatchRawValueChange}
           onReset={handleReset}
           onRandomize={handleRandomize}
           selectedDistrict={selectedDistrict}
@@ -71,11 +84,14 @@ export function App() {
         />
       </div>
 
-      {/* 2. 오른쪽 50% 영역: 3D 지도 시각화 뷰포트 & Export */}
+      {/* 2. 오른쪽 50% 영역: 3D 지도 시각화 뷰포트 (0~100 높이 반영 & 실제 data값 라벨) */}
       <div className="w-full md:w-1/2 h-1/2 md:h-full flex-1 relative">
         <Map3DCanvas
           districts={parsedDistricts}
-          districtValues={districtValues}
+          rawValues={rawDistrictValues}
+          normalizedValues={normalized}
+          minRaw={minRaw}
+          maxRaw={maxRaw}
           selectedDistrict={selectedDistrict}
           onSelectDistrict={setSelectedDistrict}
         />

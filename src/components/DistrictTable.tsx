@@ -8,15 +8,19 @@ import {
   CheckCircle2, 
   X,
   FileSpreadsheet,
-  HelpCircle
+  HelpCircle,
+  Calculator
 } from 'lucide-react';
 import { getDistrictColor } from '../utils/geoUtils';
 
 interface DistrictTableProps {
   districts: string[];
-  districtValues: Record<string, number>;
-  onValueChange: (district: string, value: number) => void;
-  onBatchValueChange: (newValues: Record<string, number>) => void;
+  rawValues: Record<string, number>;
+  normalizedValues: Record<string, number>;
+  minRaw: number;
+  maxRaw: number;
+  onRawValueChange: (district: string, value: number) => void;
+  onBatchRawValueChange: (newValues: Record<string, number>) => void;
   onReset: () => void;
   onRandomize: () => void;
   selectedDistrict: string | null;
@@ -25,9 +29,12 @@ interface DistrictTableProps {
 
 export const DistrictTable: React.FC<DistrictTableProps> = ({
   districts,
-  districtValues,
-  onValueChange,
-  onBatchValueChange,
+  rawValues,
+  normalizedValues,
+  minRaw,
+  maxRaw,
+  onRawValueChange,
+  onBatchRawValueChange,
   onReset,
   onRandomize,
   selectedDistrict,
@@ -51,21 +58,21 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
   };
 
   // 통계 계산
-  const values = Object.values(districtValues);
-  const avgValue = Math.round(values.reduce((a, b) => a + b, 0) / (values.length || 1));
-  const maxValue = Math.max(...values);
-  const minValue = Math.min(...values);
+  const rawList = Object.values(rawValues);
+  const avgRaw = rawList.length > 0 
+    ? Math.round(rawList.reduce((a, b) => a + b, 0) / rawList.length) 
+    : 0;
 
   // 정렬 및 검색 필터링
   const filteredDistricts = [...districts]
     .filter(name => name.includes(searchQuery.trim()))
     .sort((a, b) => {
-      if (sortMode === 'value-desc') return (districtValues[b] ?? 0) - (districtValues[a] ?? 0);
-      if (sortMode === 'value-asc') return (districtValues[a] ?? 0) - (districtValues[b] ?? 0);
+      if (sortMode === 'value-desc') return (rawValues[b] ?? 0) - (rawValues[a] ?? 0);
+      if (sortMode === 'value-asc') return (rawValues[a] ?? 0) - (rawValues[b] ?? 0);
       return a.localeCompare(b, 'ko');
     });
 
-  // 클립보드 세로 텍스트 파싱 및 일괄 업데이트 핵심 로직
+  // 클립보드 세로 텍스트 파싱 및 B열(Raw Data) 일괄 업데이트 로직
   const parseAndApplyPasteData = (rawText: string, startRow = 0) => {
     if (!rawText.trim()) return;
 
@@ -85,15 +92,13 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
     });
 
     if (hasDistrictNames) {
-      // 구 이름 매칭 방식
       lines.forEach(line => {
         const parts = line.split(/[\t, ]+/).filter(Boolean);
         for (const district of districts) {
           if (line.includes(district)) {
-            // 숫자인 부분 찾기
-            const numPart = parts.find(p => !isNaN(Number(p)) && p !== district);
+            const numPart = parts.find(p => !isNaN(Number(p.replace(/,/g, ''))) && p !== district);
             if (numPart !== undefined) {
-              const val = Math.max(0, Math.min(100, Math.round(Number(numPart))));
+              const val = Number(numPart.replace(/,/g, ''));
               updated[district] = val;
               appliedCount++;
               break;
@@ -102,15 +107,14 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
         }
       });
     } else {
-      // 순수 세로 숫자 열 방식 (엑셀 등에서 세로 25개 셀 복사 시)
+      // 순수 세로 숫자 열 방식
       lines.forEach((line, idx) => {
         const targetRow = startRow + idx;
         if (targetRow < filteredDistricts.length) {
           const districtName = filteredDistricts[targetRow];
-          // 숫자 추출 (쉼표나 공백 등 정리)
-          const cleanNum = line.replace(/[^0-9.-]/g, '');
+          const cleanNum = line.replace(/,/g, '').trim();
           if (cleanNum && !isNaN(Number(cleanNum))) {
-            const val = Math.max(0, Math.min(100, Math.round(Number(cleanNum))));
+            const val = Number(cleanNum);
             updated[districtName] = val;
             appliedCount++;
           }
@@ -119,14 +123,14 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
     }
 
     if (appliedCount > 0) {
-      onBatchValueChange(updated);
-      showToast(`총 ${appliedCount}개 구 데이터가 성공적으로 반영되었습니다!`);
+      onBatchRawValueChange(updated);
+      showToast(`총 ${appliedCount}개 구의 실제 데이터가 반영되어 0~100 스케일이 재계산되었습니다!`);
     } else {
       showToast('유효한 숫자 데이터를 찾지 못했습니다.');
     }
   };
 
-  // 테이블 내 셀에서 직접 Ctrl+V 붙여넣기 이벤트 처리
+  // 테이블 내 B열 셀에서 직접 Ctrl+V 붙여넣기 이벤트 처리
   const handleCellPaste = (e: React.ClipboardEvent<HTMLInputElement>, rowIndex: number) => {
     e.preventDefault();
     const pastedData = e.clipboardData.getData('text');
@@ -140,14 +144,20 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
     setPasteInputText('');
   };
 
-  // 샘플 데이터 복사 테스트용
+  // 샘플 데이터 복사 테스트용 (자유로운 큰 수치 예시)
   const handleCopySampleData = () => {
-    const sample = filteredDistricts.map((_, i) => Math.floor(30 + Math.sin(i) * 35 + 20)).join('\n');
+    const sample = [
+      '534000', '462000', '296000', '568000', '487000',
+      '337000', '395000', '230000', '503000', '312000',
+      '342000', '382000', '365000', '306000', '408000',
+      '281000', '430000', '658000', '442000', '376000',
+      '218000', '468000', '141000', '121000', '385000'
+    ].join('\n');
     navigator.clipboard.writeText(sample);
-    showToast('샘플 25개 세로 데이터가 클립보드에 복사되었습니다! Ctrl+V로 붙여넣어 보세요.');
+    showToast('샘플 25개 실제 데이터가 클립보드에 복사되었습니다! B열에서 Ctrl+V를 눌러보세요.');
   };
 
-  // 키보드 네비게이션 (Enter, 방향키 위/아래)
+  // 키보드 네비게이션
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
     if (e.key === 'Enter' || e.key === 'ArrowDown') {
       e.preventDefault();
@@ -177,11 +187,11 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-bold text-slate-900 tracking-tight">서울시 25개 구 데이터 시트</h1>
                 <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200">
-                  Spreadsheet Grid
+                  3열 스마트 정규화
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-medium mt-0.5">
-                엑셀이나 외부에서 복사한 세로 데이터를 바로 붙여넣기(Ctrl+V)할 수 있습니다.
+                B열에 자유로운 실제 데이터를 넣으면 C열에 0~100 스케일로 자동 계산됩니다.
               </p>
             </div>
           </div>
@@ -190,29 +200,38 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
         {/* 통계 요약 뱃지 */}
         <div className="grid grid-cols-3 gap-2.5 mt-4">
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-center">
-            <span className="text-[10px] font-semibold text-slate-400 uppercase">평균 수치</span>
-            <div className="text-base font-extrabold text-slate-800">{avgValue}</div>
+            <span className="text-[10px] font-semibold text-slate-400 uppercase">실제 평균값</span>
+            <div className="text-sm font-extrabold text-slate-800 font-mono truncate" title={avgRaw.toLocaleString()}>
+              {avgRaw.toLocaleString()}
+            </div>
           </div>
           <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-lg p-2 text-center">
-            <span className="text-[10px] font-semibold text-emerald-600 uppercase">최고 수치</span>
-            <div className="text-base font-extrabold text-emerald-700">{maxValue}</div>
+            <div className="flex items-center justify-center gap-1">
+              <span className="text-[10px] font-semibold text-emerald-600 uppercase">최댓값 (100)</span>
+            </div>
+            <div className="text-sm font-extrabold text-emerald-700 font-mono truncate" title={maxRaw.toLocaleString()}>
+              {maxRaw.toLocaleString()}
+            </div>
           </div>
           <div className="bg-rose-50/60 border border-rose-200/80 rounded-lg p-2 text-center">
-            <span className="text-[10px] font-semibold text-rose-600 uppercase">최저 수치</span>
-            <div className="text-base font-extrabold text-rose-700">{minValue}</div>
+            <div className="flex items-center justify-center gap-1">
+              <span className="text-[10px] font-semibold text-rose-600 uppercase">최솟값 (0)</span>
+            </div>
+            <div className="text-sm font-extrabold text-rose-700 font-mono truncate" title={minRaw.toLocaleString()}>
+              {minRaw.toLocaleString()}
+            </div>
           </div>
         </div>
 
-        {/* 엑셀 스타일 스프레드시트 툴바 */}
+        {/* 스프레드시트 액션 툴바 */}
         <div className="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-slate-100">
-          {/* 붙여넣기 마법사 버튼 */}
           <button
             onClick={() => setIsPasteModalOpen(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 rounded-md shadow-sm transition-all cursor-pointer"
             title="외부 엑셀/스프레드시트 세로 데이터를 한번에 붙여넣기"
           >
             <ClipboardPaste className="w-3.5 h-3.5" />
-            외부 데이터 일괄 붙여넣기
+            외부 데이터 붙여넣기
           </button>
 
           <button
@@ -234,14 +253,14 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
           <button
             onClick={handleCopySampleData}
             className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded transition-colors ml-auto cursor-pointer"
-            title="테스트용 25개 수치를 클립보드에 복사"
+            title="테스트용 25개 실제 데이터(인구수) 복사"
           >
             <HelpCircle className="w-3 h-3 text-slate-400" />
             샘플데이터 복사
           </button>
         </div>
 
-        {/* 검색 및 정렬 바 */}
+        {/* 검색 및 정렬 필터 */}
         <div className="flex items-center gap-2 mt-3">
           <div className="relative flex-1">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -259,7 +278,7 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
               else if (sortMode === 'value-desc') setSortMode('value-asc');
               else setSortMode('default');
             }}
-            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded hover:bg-slate-100 transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <ArrowUpDown className="w-3 h-3 text-slate-400" />
             <span>
@@ -271,43 +290,59 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
         </div>
       </div>
 
-      {/* 2. 스프레드시트 수식/정보 입력 표시줄 (Formula Bar) */}
+      {/* 2. 스프레드시트 수식 표시줄 (Formula Bar) */}
       <div className="flex items-center px-4 py-1.5 bg-slate-50 border-b border-slate-200 text-xs text-slate-600 font-mono">
-        <span className="w-10 text-slate-400 font-bold">
+        <span className="w-10 text-emerald-700 font-bold">
           {focusedIndex !== null ? `B${focusedIndex + 1}` : 'CELL'}
         </span>
         <span className="text-slate-300 mx-2">|</span>
-        <span className="text-slate-500 text-[11px] truncate">
-          {focusedIndex !== null && filteredDistricts[focusedIndex]
-            ? `${filteredDistricts[focusedIndex]} = ${districtValues[filteredDistricts[focusedIndex]] ?? 0}`
-            : '💡 임의의 셀을 클릭하고 Ctrl+V를 누르면 25개 세로 데이터가 차례대로 붙여넣어집니다.'}
+        <span className="text-slate-500 text-[11px] truncate flex items-center gap-1.5">
+          {focusedIndex !== null && filteredDistricts[focusedIndex] ? (
+            <>
+              <span className="font-semibold text-slate-800">{filteredDistricts[focusedIndex]}</span>
+              <span>: 실제값 = {rawValues[filteredDistricts[focusedIndex]]?.toLocaleString()}</span>
+              <span className="text-slate-400">➔</span>
+              <span className="text-emerald-700 font-bold">
+                정규화 높이 = {normalizedValues[filteredDistricts[focusedIndex]]} (0~100)
+              </span>
+            </>
+          ) : (
+            <span>💡 B열(실제 데이터)을 클릭하고 Ctrl+V를 누르면 세로 데이터가 붙여넣어집니다.</span>
+          )}
         </span>
       </div>
 
-      {/* 3. 스프레드시트 격자(Grid) 테이블 */}
+      {/* 3. 3열 구조의 스프레드시트 격자 테이블 */}
       <div className="flex-1 overflow-y-auto bg-slate-100/60 p-2">
         <div className="bg-white border border-slate-300 rounded shadow-sm overflow-hidden">
           <table className="w-full border-collapse text-left table-fixed">
-            {/* 스프레드시트 열 헤더 (Column Header) */}
+            {/* 스프레드시트 열 헤더 */}
             <thead>
               <tr className="bg-slate-100 border-b border-slate-300 select-none text-[11px] font-bold text-slate-600">
-                <th className="w-12 py-1.5 text-center border-r border-slate-300 text-slate-400 bg-slate-200/50">
+                <th className="w-10 py-1.5 text-center border-r border-slate-300 text-slate-400 bg-slate-200/50">
                   #
                 </th>
-                <th className="w-1/2 py-1.5 px-3 border-r border-slate-300">
+                <th className="w-28 py-1.5 px-3 border-r border-slate-300">
                   A : 자치구 이름
                 </th>
-                <th className="w-1/2 py-1.5 px-3">
-                  B : 수치 (Data, 0~100)
+                <th className="py-1.5 px-3 border-r border-slate-300 bg-emerald-50/40 text-emerald-900">
+                  B : 실제 데이터 (입력)
+                </th>
+                <th className="w-36 py-1.5 px-3 text-slate-700 bg-sky-50/40">
+                  <div className="flex items-center gap-1">
+                    <Calculator className="w-3 h-3 text-sky-600" />
+                    <span>C : 정규화 (0~100)</span>
+                  </div>
                 </th>
               </tr>
             </thead>
 
-            {/* 스프레드시트 행 격자 (Rows) */}
+            {/* 스프레드시트 행 격자 */}
             <tbody className="divide-y divide-slate-200 text-xs">
               {filteredDistricts.map((name, idx) => {
-                const val = districtValues[name] ?? 0;
-                const color = getDistrictColor(val);
+                const rawVal = rawValues[name] ?? 0;
+                const normVal = normalizedValues[name] ?? 0;
+                const color = getDistrictColor(normVal);
                 const isSelected = selectedDistrict === name;
                 const isFocused = focusedIndex === idx;
 
@@ -323,14 +358,14 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
                         : 'hover:bg-slate-50/60'
                     }`}
                   >
-                    {/* 행 번호 셀 (Row Header: 1, 2, 3...) */}
+                    {/* 행 번호 셀 */}
                     <td className="py-1 text-center font-mono text-[11px] font-semibold text-slate-400 bg-slate-100/70 border-r border-slate-300 select-none">
                       {idx + 1}
                     </td>
 
-                    {/* A열: 구 이름 셀 */}
+                    {/* A열: 자치구 이름 셀 */}
                     <td className="py-1 px-3 border-r border-slate-300 cursor-pointer">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         <div
                           className="w-2.5 h-2.5 rounded-sm flex-shrink-0 shadow-xs border border-black/10"
                           style={{ backgroundColor: color }}
@@ -341,9 +376,9 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
                       </div>
                     </td>
 
-                    {/* B열: 수치 입력 스프레드시트 셀 (Input with Paste handler) */}
+                    {/* B열: 새로 추가된 실제 데이터(Raw Data) 입력 셀 (자유 수치 입력 + Paste) */}
                     <td 
-                      className="p-0 relative"
+                      className="p-0 relative border-r border-slate-300"
                       onClick={e => e.stopPropagation()}
                     >
                       <div
@@ -354,9 +389,8 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
                         <input
                           ref={el => { inputRefs.current[idx] = el; }}
                           type="number"
-                          min="0"
-                          max="100"
-                          value={val}
+                          step="any"
+                          value={rawVal}
                           onFocus={() => {
                             setFocusedIndex(idx);
                             onSelectDistrict(name);
@@ -367,20 +401,39 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
                           onPaste={e => handleCellPaste(e, idx)}
                           onKeyDown={e => handleKeyDown(e, idx)}
                           onChange={e => {
-                            const num = Math.max(0, Math.min(100, Number(e.target.value) || 0));
-                            onValueChange(name, num);
+                            const num = Number(e.target.value) || 0;
+                            onRawValueChange(name, num);
                           }}
-                          className="w-full h-8 px-3 font-mono font-bold text-slate-900 bg-transparent text-right outline-none cursor-text"
-                          title="Ctrl+V를 누르면 여기서부터 아래로 세로 데이터가 채워집니다"
+                          className="w-full h-8 px-2.5 font-mono font-bold text-slate-900 bg-transparent text-right outline-none cursor-text text-xs"
+                          placeholder="수치 입력"
+                          title="자유롭게 실제 데이터를 입력하세요. Ctrl+V로 세로 붙여넣기도 가능합니다."
                         />
-                        <span className="text-[10px] text-slate-400 font-mono ml-1">
-                          pt
-                        </span>
-
-                        {/* 엑셀 셀 우측 하단 채우기 핸들 포인트 데코 */}
                         {isFocused && (
                           <div className="absolute right-0 bottom-0 w-1.5 h-1.5 bg-emerald-600 pointer-events-none" />
                         )}
+                      </div>
+                    </td>
+
+                    {/* C열: 0~100 자동 비율 조정 (Normalized) 결과 셀 (읽기 전용) */}
+                    <td className="py-1 px-2.5 bg-slate-50/50">
+                      <div className="flex items-center gap-2">
+                        {/* 미니 프로그레스 바 */}
+                        <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-300"
+                            style={{
+                              width: `${Math.max(0, Math.min(100, normVal))}%`,
+                              backgroundColor: color,
+                            }}
+                          />
+                        </div>
+                        {/* 0~100 수치 표시 */}
+                        <span 
+                          className="font-mono font-bold text-[11px] w-9 text-right"
+                          style={{ color }}
+                        >
+                          {normVal}
+                        </span>
                       </div>
                     </td>
                   </tr>
@@ -393,16 +446,16 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
 
       {/* 스프레드시트 상태표시줄 */}
       <div className="px-4 py-2 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500">
-        <div className="flex items-center gap-3">
-          <span>준비됨 • 총 25개 구</span>
+        <div className="flex items-center gap-2">
+          <span>준비됨 • 25개 구</span>
           <span className="text-slate-300">|</span>
           <span className="text-emerald-700 font-medium">
-            💡 단축키: Enter/↓(다음 행), ↑(이전 행), Ctrl+V(세로 데이터 붙여넣기)
+            💡 B열에 실제값을 넣으면 C열(0~100)로 자동 변환되어 3D 등고선 높이에 반영됩니다.
           </span>
         </div>
       </div>
 
-      {/* 4. 외부 데이터 일괄 붙여넣기 팝업 모달 */}
+      {/* 4. 외부 데이터 붙여넣기 모달 */}
       {isPasteModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -410,7 +463,7 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
               <div className="flex items-center gap-2">
                 <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
                 <h3 className="text-sm font-bold text-slate-900">
-                  외부 스프레드시트 세로 데이터 붙여넣기
+                  외부 실제 데이터 붙여넣기 (B열 자동 매핑)
                 </h3>
               </div>
               <button
@@ -423,14 +476,14 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
 
             <div className="p-5">
               <p className="text-xs text-slate-600 mb-2 leading-relaxed">
-                엑셀, 구글 스프레드시트, 또는 메모장에서 <strong>세로 25개 숫자(또는 구 이름과 숫자)</strong>를 복사한 후 아래 창에 <code>Ctrl+V</code>로 붙여넣으세요.
+                엑셀이나 외부에서 복사한 <strong>실제 데이터(인구, 예산, 면적 등)</strong>를 붙여넣으세요. 최대값은 100, 최소값은 0으로 자동 비율 조정됩니다.
               </p>
 
               <textarea
                 rows={8}
                 value={pasteInputText}
                 onChange={e => setPasteInputText(e.target.value)}
-                placeholder={`예시 1 (순수 세로 숫자 열):\n85\n70\n92\n45\n...\n\n예시 2 (구 이름과 숫자):\n강남구\t95\n강동구\t60\n...`}
+                placeholder={`예시 (세로 숫자 열):\n534000\n462000\n296000\n...\n\n또는 구 이름과 함께:\n강남구\t534000\n강동구\t462000\n...`}
                 className="w-full p-3 text-xs font-mono bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-900 placeholder:text-slate-400 resize-none"
                 autoFocus
               />
@@ -466,7 +519,7 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
                     disabled={!pasteInputText.trim()}
                     className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 rounded-lg shadow transition-all cursor-pointer disabled:opacity-40"
                   >
-                    25개 구 데이터 적용
+                    데이터 적용 & 0~100 자동 계산
                   </button>
                 </div>
               </div>

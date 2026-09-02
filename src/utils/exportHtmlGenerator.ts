@@ -2,15 +2,17 @@ import type { DistrictParsedData } from './geoUtils';
 
 export function generateStandaloneHtml(
   districtParsedList: DistrictParsedData[],
-  districtValues: Record<string, number>
+  rawDistrictValues: Record<string, number>,
+  normalizedDistrictValues: Record<string, number>
 ): string {
-  // 직렬화 데이터 준비
+  // 직렬화 데이터 준비: rawValue와 normalizedValue 모두 포함
   const serializedData = districtParsedList.map(d => ({
     code: d.code,
     name: d.name,
     nameEng: d.nameEng,
     centroid: d.centroid,
-    value: districtValues[d.name] ?? 50,
+    rawValue: rawDistrictValues[d.name] ?? 0,
+    normalizedValue: normalizedDistrictValues[d.name] ?? 50,
     polygons: d.polygons.map(p => ({
       outerRing: p.outerRing,
       holes: p.holes,
@@ -56,14 +58,14 @@ export function generateStandaloneHtml(
       position: absolute;
       top: 20px;
       left: 24px;
-      background: rgba(255, 255, 255, 0.92);
+      background: rgba(255, 255, 255, 0.94);
       backdrop-filter: blur(12px);
       padding: 16px 22px;
       border-radius: 14px;
       border: 1px solid #e2e8f0;
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
       z-index: 10;
-      max-width: 380px;
+      max-width: 400px;
     }
     .hud-title {
       font-size: 17px;
@@ -119,20 +121,6 @@ export function generateStandaloneHtml(
     .btn-reset:hover {
       background: #0369a1;
     }
-    #tooltip {
-      position: absolute;
-      display: none;
-      pointer-events: none;
-      background: rgba(15, 23, 42, 0.9);
-      color: white;
-      padding: 8px 14px;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 500;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      z-index: 20;
-      transform: translate(-50%, -120%);
-    }
   </style>
 
   <!-- Three.js & OrbitControls from reliable CDNs -->
@@ -146,7 +134,7 @@ export function generateStandaloneHtml(
       <span class="hud-badge">Standalone</span>
     </div>
     <div class="hud-desc">
-      각 구의 입력 수치에 따라 3D Wireframe Mesh 및 등고선 높이가 Z축으로 실시간 반영된 독립 실행형 뷰포트입니다.
+      등고선 높이는 <strong>0~100 스케일</strong>로 자동 비례 계산되었으며, 3D 상단 라벨에는 <strong>실제 data값</strong>이 표시됩니다.
     </div>
   </div>
 
@@ -158,7 +146,6 @@ export function generateStandaloneHtml(
     <button class="btn-reset" onclick="resetCamera()">시점 초기화</button>
   </div>
 
-  <div id="tooltip"></div>
   <div id="canvas-container"></div>
 
   <!-- 인젝션된 GeoJSON 및 수치 데이터 -->
@@ -193,7 +180,7 @@ export function generateStandaloneHtml(
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.target.set(0, 0, 2);
-    controls.maxPolarAngle = Math.PI / 2 - 0.05; // 지면 아래로 내려가지 않도록 제한
+    controls.maxPolarAngle = Math.PI / 2 - 0.05;
 
     function resetCamera() {
       camera.position.set(0, -42, 38);
@@ -201,7 +188,7 @@ export function generateStandaloneHtml(
       controls.update();
     }
 
-    // 3. 조명 설정 (밝고 깔끔한 화이트 모드 조명)
+    // 3. 조명 설정
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
     scene.add(ambientLight);
 
@@ -214,13 +201,13 @@ export function generateStandaloneHtml(
     dirLight2.position.set(-30, 20, 30);
     scene.add(dirLight2);
 
-    // 4. 바닥 그리드 (은은한 라이트 그레이 그리드)
+    // 4. 바닥 그리드
     const gridHelper = new THREE.GridHelper(70, 35, 0xcbd5e1, 0xe2e8f0);
     gridHelper.rotation.x = Math.PI / 2;
     gridHelper.position.z = -0.05;
     scene.add(gridHelper);
 
-    // 5. 색상 헬퍼
+    // 5. 색상 헬퍼 (0~100 정규화 기준)
     function getDistrictColor(val) {
       const norm = Math.max(0, Math.min(1, val / 100));
       if (norm < 0.5) {
@@ -238,15 +225,15 @@ export function generateStandaloneHtml(
       }
     }
 
-    // 6. 3D Billboard Sprite 텍스트 생성기
+    // 6. 3D Billboard Sprite 텍스트 생성기 (실제 data값 표시)
     function createTextSprite(text, subText, colorHex) {
       const canvas = document.createElement('canvas');
-      canvas.width = 256;
-      canvas.height = 128;
+      canvas.width = 280;
+      canvas.height = 130;
       const ctx = canvas.getContext('2d');
 
       // 둥근 사각형 배경
-      const x = 18, y = 18, w = 220, h = 92, r = 16;
+      const x = 18, y = 18, w = 244, h = 94, r = 16;
       ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
       ctx.shadowBlur = 12;
       ctx.shadowOffsetY = 4;
@@ -273,14 +260,14 @@ export function generateStandaloneHtml(
       // 텍스트 (구 이름)
       ctx.shadowColor = 'transparent';
       ctx.fillStyle = '#0f172a';
-      ctx.font = 'bold 26px sans-serif';
+      ctx.font = 'bold 24px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(text, 128, 56);
+      ctx.fillText(text, 140, 54);
 
-      // 수치 뱃지
+      // 실제 data값 텍스트
       ctx.fillStyle = '#' + colorHex.toString(16).padStart(6, '0');
-      ctx.font = 'bold 22px sans-serif';
-      ctx.fillText(subText, 128, 90);
+      ctx.font = 'bold 20px monospace';
+      ctx.fillText(subText, 140, 88);
 
       const texture = new THREE.CanvasTexture(canvas);
       const spriteMaterial = new THREE.SpriteMaterial({ 
@@ -289,16 +276,15 @@ export function generateStandaloneHtml(
         depthTest: false 
       });
       const sprite = new THREE.Sprite(spriteMaterial);
-      sprite.scale.set(4.5, 2.25, 1);
+      sprite.scale.set(4.8, 2.2, 1);
       return sprite;
     }
 
-    // 7. 각 구별 3D 메쉬 및 와이어프레임 생성
-    const districtObjects = [];
-
+    // 7. 각 구별 3D 메쉬 및 와이어프레임 생성 (0~100 높이로 그리고 실제 data값은 라벨에 표시)
     districtsData.forEach(district => {
-      const h = Math.max(0.6, district.value * 0.08);
-      const colorHex = getDistrictColor(district.value);
+      // 0~100 비율 높이
+      const h = Math.max(0.6, (district.normalizedValue ?? 50) * 0.08);
+      const colorHex = getDistrictColor(district.normalizedValue ?? 50);
 
       const positions = [];
       const indices = [];
@@ -377,7 +363,6 @@ export function generateStandaloneHtml(
         side: THREE.DoubleSide
       });
       const solidMesh = new THREE.Mesh(meshGeo, solidMat);
-      solidMesh.userData = { district };
 
       // 그물망 와이어프레임 오버레이
       const wireMat = new THREE.MeshBasicMaterial({
@@ -399,8 +384,9 @@ export function generateStandaloneHtml(
       });
       const contourLine = new THREE.LineSegments(contourGeo, contourMat);
 
-      // 최상단 텍스트 스프라이트 라벨
-      const sprite = createTextSprite(district.name, district.value.toString(), colorHex);
+      // 최상단 텍스트 스프라이트 라벨: 실제 data값 표시
+      const formattedRaw = (district.rawValue || 0).toLocaleString();
+      const sprite = createTextSprite(district.name, formattedRaw, colorHex);
       sprite.position.set(district.centroid[0], district.centroid[1], h + 1.6);
 
       const group = new THREE.Group();
@@ -410,7 +396,6 @@ export function generateStandaloneHtml(
       group.add(sprite);
 
       scene.add(group);
-      districtObjects.push(solidMesh);
     });
 
     // 8. 렌더 루프 및 리사이즈
@@ -435,10 +420,11 @@ export function generateStandaloneHtml(
 
 export function downloadStandaloneHtml(
   districtParsedList: DistrictParsedData[],
-  districtValues: Record<string, number>,
+  rawDistrictValues: Record<string, number>,
+  normalizedDistrictValues: Record<string, number>,
   filename = 'seoul_3d_wireframe_mesh.html'
 ) {
-  const htmlContent = generateStandaloneHtml(districtParsedList, districtValues);
+  const htmlContent = generateStandaloneHtml(districtParsedList, rawDistrictValues, normalizedDistrictValues);
   const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
 

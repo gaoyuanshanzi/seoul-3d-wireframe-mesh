@@ -7,27 +7,29 @@ import { buildDistrictGeometry } from '../utils/meshBuilder';
 
 interface District3DItemProps {
   district: DistrictParsedData;
-  value: number;
+  rawValue: number;
+  normalizedValue: number;
   isSelected: boolean;
   onSelect: (name: string) => void;
 }
 
 export const District3DItem: React.FC<District3DItemProps> = ({
   district,
-  value,
+  rawValue,
+  normalizedValue,
   isSelected,
   onSelect,
 }) => {
-  // 수치(0~100)를 3D 공간 높이(0.6 ~ 8.6 유닛)로 환산
-  const height = useMemo(() => Math.max(0.6, value * 0.08), [value]);
+  // 0~100으로 표시된 정규화 수치를 3D 등고선 높이(0.6 ~ 8.6 유닛)로 적용
+  const height = useMemo(() => Math.max(0.6, normalizedValue * 0.08), [normalizedValue]);
 
   // 지오메트리 빌드
   const { meshGeometry, contourLinesGeometry } = useMemo(() => {
     return buildDistrictGeometry(district, height);
   }, [district, height]);
 
-  // 색상 계산
-  const colorStr = useMemo(() => getDistrictColor(value), [value]);
+  // 0~100 수치 기준 컬러 계산
+  const colorStr = useMemo(() => getDistrictColor(normalizedValue), [normalizedValue]);
   const threeColor = useMemo(() => new THREE.Color(colorStr), [colorStr]);
 
   return (
@@ -67,7 +69,7 @@ export const District3DItem: React.FC<District3DItemProps> = ({
         />
       </lineSegments>
 
-      {/* 4. 각 구 최상단(Z축 최고점) 위치에 3D Billboard HTML Overlay 라벨 */}
+      {/* 4. 각 구 최상단(Z축 최고점) 위치에 3D Billboard HTML Overlay 라벨: 실제 data값 표시 */}
       <Html
         position={[district.centroid[0], district.centroid[1], height + 0.9]}
         center
@@ -89,7 +91,7 @@ export const District3DItem: React.FC<District3DItemProps> = ({
             {district.name}
           </span>
           <span
-            className={`text-[11px] font-extrabold px-1.5 py-0.5 rounded-full ${
+            className={`text-[11px] font-extrabold px-2 py-0.5 rounded-full ${
               isSelected
                 ? 'bg-white/20 text-white'
                 : 'bg-slate-100 text-slate-900'
@@ -97,8 +99,9 @@ export const District3DItem: React.FC<District3DItemProps> = ({
             style={{
               color: isSelected ? '#ffffff' : colorStr,
             }}
+            title={`실제값: ${rawValue.toLocaleString()} (정규화 높이: ${normalizedValue})`}
           >
-            {value}
+            {rawValue.toLocaleString()}
           </span>
         </div>
       </Html>

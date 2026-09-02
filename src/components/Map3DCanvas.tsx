@@ -9,14 +9,20 @@ import { downloadStandaloneHtml } from '../utils/exportHtmlGenerator';
 
 interface Map3DCanvasProps {
   districts: DistrictParsedData[];
-  districtValues: Record<string, number>;
+  rawValues: Record<string, number>;
+  normalizedValues: Record<string, number>;
+  minRaw: number;
+  maxRaw: number;
   selectedDistrict: string | null;
   onSelectDistrict: (district: string | null) => void;
 }
 
 export const Map3DCanvas: React.FC<Map3DCanvasProps> = ({
   districts,
-  districtValues,
+  rawValues,
+  normalizedValues,
+  minRaw,
+  maxRaw,
   selectedDistrict,
   onSelectDistrict,
 }) => {
@@ -33,7 +39,7 @@ export const Map3DCanvas: React.FC<Map3DCanvasProps> = ({
   const handleExportHtml = () => {
     setIsExporting(true);
     try {
-      downloadStandaloneHtml(districts, districtValues, 'seoul_3d_wireframe_mesh.html');
+      downloadStandaloneHtml(districts, rawValues, normalizedValues, 'seoul_3d_wireframe_mesh.html');
       setShowSuccessToast(true);
       setTimeout(() => setShowSuccessToast(false), 3500);
     } catch (err) {
@@ -74,30 +80,29 @@ export const Map3DCanvas: React.FC<Map3DCanvasProps> = ({
         </div>
       )}
 
-      {/* 좌측 상단 미니 뱃지 안내 */}
+      {/* 좌측 상단 안내 뱃지 */}
       <div className="absolute top-5 left-5 z-10 pointer-events-none">
-        <div className="bg-white/80 backdrop-blur-md border border-slate-200/60 rounded-xl px-3 py-2 shadow-sm">
+        <div className="bg-white/85 backdrop-blur-md border border-slate-200/60 rounded-xl px-3 py-2 shadow-sm">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             3D Wireframe Mesh 뷰포트
           </div>
           <div className="text-[11px] text-slate-500 mt-0.5">
-            마우스 드래그(회전) • 휠(줌) • 우클릭(이동)
+            등고선 높이: <strong>0~100 스케일</strong> • 3D 라벨: <strong>실제 data값</strong>
           </div>
         </div>
       </div>
 
-      {/* 우측 하단 범례 */}
-      <div className="absolute bottom-5 right-5 z-10 bg-white/85 backdrop-blur-md border border-slate-200/70 rounded-xl p-3 shadow-md max-w-xs pointer-events-none">
-        <div className="text-[11px] font-bold text-slate-700 mb-1.5 flex items-center justify-between">
-          <span>데이터 수치 (0 ~ 100)</span>
-          <span className="text-[10px] text-slate-400">Z축 높이 매핑</span>
+      {/* 우측 하단 범례 카드 */}
+      <div className="absolute bottom-5 right-5 z-10 bg-white/90 backdrop-blur-md border border-slate-200/70 rounded-xl p-3 shadow-md max-w-xs pointer-events-none">
+        <div className="text-[11px] font-bold text-slate-700 mb-1 flex items-center justify-between">
+          <span>등고선 Z축 높이 (0 ~ 100)</span>
+          <span className="text-[10px] text-emerald-600 font-mono">자동 비율조정</span>
         </div>
-        <div className="h-2 w-48 rounded-full bg-gradient-to-r from-[#0284c7] via-[#6366f1] to-[#e11d48] shadow-inner" />
+        <div className="h-2 w-52 rounded-full bg-gradient-to-r from-[#0284c7] via-[#6366f1] to-[#e11d48] shadow-inner" />
         <div className="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
-          <span>0 (낮음)</span>
-          <span>50</span>
-          <span>100 (높음)</span>
+          <span title={`최솟값: ${minRaw.toLocaleString()}`}>0 ({minRaw.toLocaleString()})</span>
+          <span title={`최댓값: ${maxRaw.toLocaleString()}`}>100 ({maxRaw.toLocaleString()})</span>
         </div>
       </div>
 
@@ -105,7 +110,6 @@ export const Map3DCanvas: React.FC<Map3DCanvasProps> = ({
       <Canvas
         camera={{ position: [0, -42, 38], fov: 45, up: [0, 0, 1] }}
         onPointerDown={(e) => {
-          // 빈 공간 클릭 시 선택 해제
           if (e.target === e.currentTarget) {
             onSelectDistrict(null);
           }
@@ -126,13 +130,14 @@ export const Map3DCanvas: React.FC<Map3DCanvasProps> = ({
           position={[0, 0, -0.05]}
         />
 
-        {/* 25개 구 3D 메쉬 렌더링 */}
+        {/* 25개 구 3D 메쉬 렌더링: 0~100 높이 반영 & 실제 data값 라벨 표시 */}
         <group>
           {districts.map((district) => (
             <District3DItem
               key={district.name}
               district={district}
-              value={districtValues[district.name] ?? 50}
+              rawValue={rawValues[district.name] ?? 0}
+              normalizedValue={normalizedValues[district.name] ?? 50}
               isSelected={selectedDistrict === district.name}
               onSelect={onSelectDistrict}
             />
@@ -146,7 +151,7 @@ export const Map3DCanvas: React.FC<Map3DCanvasProps> = ({
           enableDamping
           dampingFactor={0.06}
           target={[0, 0, 2]}
-          maxPolarAngle={Math.PI / 2 - 0.05} // 수평선 아래 방지
+          maxPolarAngle={Math.PI / 2 - 0.05}
           minDistance={10}
           maxDistance={120}
         />

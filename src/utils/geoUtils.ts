@@ -137,34 +137,63 @@ export function parseSeoulGeoJson(geojson: SeoulGeoJson): DistrictParsedData[] {
   });
 }
 
-// 25개 구 기본 수치 데이터 초기화 생성기
-export const INITIAL_DISTRICT_VALUES: Record<string, number> = {
-  '강남구': 92,
-  '강동구': 64,
-  '강북구': 45,
-  '강서구': 78,
-  '관악구': 58,
-  '광진구': 62,
-  '구로구': 54,
-  '금천구': 48,
-  '노원구': 68,
-  '도봉구': 42,
-  '동대문구': 59,
-  '동작구': 66,
-  '마포구': 85,
-  '서대문구': 60,
-  '서초구': 90,
-  '성동구': 76,
-  '성북구': 55,
-  '송파구': 88,
-  '양천구': 70,
-  '영등포구': 82,
-  '용산구': 86,
-  '은평구': 52,
-  '종로구': 74,
-  '중구': 79,
-  '중랑구': 47,
+// 25개 구 기본 실제 원본 데이터 (예: 서울시 구별 인구수/대표 지표 단위)
+export const INITIAL_RAW_DISTRICT_VALUES: Record<string, number> = {
+  '강남구': 534000,
+  '강동구': 462000,
+  '강북구': 296000,
+  '강서구': 568000,
+  '관악구': 487000,
+  '광진구': 337000,
+  '구로구': 395000,
+  '금천구': 230000,
+  '노원구': 503000,
+  '도봉구': 312000,
+  '동대문구': 342000,
+  '동작구': 382000,
+  '마포구': 365000,
+  '서대문구': 306000,
+  '서초구': 408000,
+  '성동구': 281000,
+  '성북구': 430000,
+  '송파구': 658000,
+  '양천구': 442000,
+  '영등포구': 376000,
+  '용산구': 218000,
+  '은평구': 468000,
+  '종로구': 141000,
+  '중구': 121000,
+  '중랑구': 385000,
 };
+
+// 실제 원본 데이터를 최소 0, 최대 100으로 정규화(Min-Max Scaling)
+export function normalizeDistrictValues(
+  rawValues: Record<string, number>
+): {
+  normalized: Record<string, number>;
+  minRaw: number;
+  maxRaw: number;
+} {
+  const vals = Object.values(rawValues);
+  if (vals.length === 0) {
+    return { normalized: {}, minRaw: 0, maxRaw: 100 };
+  }
+  const minRaw = Math.min(...vals);
+  const maxRaw = Math.max(...vals);
+  const diff = maxRaw - minRaw;
+
+  const normalized: Record<string, number> = {};
+  for (const [key, val] of Object.entries(rawValues)) {
+    if (diff === 0) {
+      normalized[key] = 50;
+    } else {
+      // 0 ~ 100 범위로 정규화 (소수점 1자리 반올림)
+      normalized[key] = Math.round(((val - minRaw) / diff) * 1000) / 10;
+    }
+  }
+
+  return { normalized, minRaw, maxRaw };
+}
 
 // 수치(0~100)에 따른 색상 계산
 export function getDistrictColor(value: number, min = 0, max = 100): string {

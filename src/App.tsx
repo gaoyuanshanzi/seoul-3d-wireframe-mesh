@@ -24,11 +24,19 @@ export function App() {
   // 현재 선택/포커스된 구
   const [selectedDistrict, setSelectedDistrict] = useState<string | null>(null);
 
-  // 수치 변경 핸들러
+  // 개별 수치 변경 핸들러
   const handleValueChange = useCallback((district: string, value: number) => {
     setDistrictValues(prev => ({
       ...prev,
       [district]: value,
+    }));
+  }, []);
+
+  // 다중/일괄 수치 변경 핸들러 (스프레드시트 세로 붙여넣기 등)
+  const handleBatchValueChange = useCallback((newValues: Record<string, number>) => {
+    setDistrictValues(prev => ({
+      ...prev,
+      ...newValues,
     }));
   }, []);
 
@@ -49,12 +57,13 @@ export function App() {
 
   return (
     <div className="w-screen h-screen flex flex-col md:flex-row overflow-hidden bg-white text-slate-900">
-      {/* 1. 왼쪽 50% 영역: 데이터 입력 표 패널 */}
+      {/* 1. 왼쪽 50% 영역: 스프레드시트 격자형 데이터 입력 패널 */}
       <div className="w-full md:w-1/2 h-1/2 md:h-full flex-shrink-0 z-10 shadow-lg md:shadow-none">
         <DistrictTable
           districts={districtNames}
           districtValues={districtValues}
           onValueChange={handleValueChange}
+          onBatchValueChange={handleBatchValueChange}
           onReset={handleReset}
           onRandomize={handleRandomize}
           selectedDistrict={selectedDistrict}

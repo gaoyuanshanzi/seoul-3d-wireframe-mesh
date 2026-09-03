@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   RefreshCw, 
   Shuffle, 
@@ -170,7 +171,7 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
 
   return (
     <div className="h-full flex flex-col bg-white select-none">
-      {/* 1. 상단 앱 타이틀 & 상태 바 (1/3 너비에 맞춤 최적화) */}
+      {/* 1. 상단 앱 타이틀 & 상태 바 */}
       <div className="p-4 border-b border-slate-200 bg-white">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -429,61 +430,75 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
         <span className="text-emerald-700 font-medium">B열 Ctrl+V 지원</span>
       </div>
 
-      {/* 붙여넣기 모달 */}
-      {isPasteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-3.5 border-b border-slate-200 bg-slate-50">
-              <div className="flex items-center gap-2">
-                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                <h3 className="text-xs font-bold text-slate-900">
-                  외부 데이터 일괄 붙여넣기 (B열 매핑)
-                </h3>
+      {/* 4. 외부 데이터 일괄 붙여넣기 팝업 모달 (React Portal로 document.body 최상단 레이어에 렌더링) */}
+      {isPasteModalOpen && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed inset-0 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm"
+          style={{ zIndex: 99999 }}
+          onClick={() => setIsPasteModalOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                  <FileSpreadsheet className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    외부 데이터 일괄 붙여넣기 (B열 매핑)
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    엑셀 등에서 복사한 세로 데이터를 한번에 입력합니다.
+                  </p>
+                </div>
               </div>
               <button
                 onClick={() => setIsPasteModalOpen(false)}
-                className="p-1 rounded-lg hover:bg-slate-200 text-slate-500 transition-colors cursor-pointer"
+                className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-500 transition-colors cursor-pointer"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-4">
-              <p className="text-[11px] text-slate-600 mb-2 leading-relaxed">
-                엑셀에서 <strong>25개 세로 데이터</strong>를 복사한 후 아래에 <code>Ctrl+V</code>로 붙여넣으세요.
+            <div className="p-5">
+              <p className="text-xs text-slate-600 mb-2.5 leading-relaxed">
+                엑셀이나 메모장에서 <strong>25개 세로 데이터</strong>(인구, 수치 등)를 복사한 후 아래 텍스트 상자에 <code>Ctrl+V</code>로 붙여넣으세요.
               </p>
 
               <textarea
-                rows={7}
+                rows={8}
                 value={pasteInputText}
                 onChange={e => setPasteInputText(e.target.value)}
-                placeholder={`예시:\n534000\n462000\n296000\n...`}
-                className="w-full p-2.5 text-xs font-mono bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white text-slate-900 placeholder:text-slate-400 resize-none"
+                placeholder={`예시 1 (순수 세로 숫자 열):\n534000\n462000\n296000\n...\n\n예시 2 (구 이름과 함께 복사된 경우):\n강남구\t534000\n강동구\t462000\n...`}
+                className="w-full p-3 text-xs font-mono bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-900 placeholder:text-slate-400 resize-none shadow-inner"
                 autoFocus
               />
 
-              <div className="flex items-center justify-between mt-3">
+              <div className="flex items-center justify-between mt-4">
                 <button
                   type="button"
                   onClick={async () => {
                     try {
                       const text = await navigator.clipboard.readText();
                       setPasteInputText(text);
-                      showToast('클립보드 내용을 가져왔습니다.');
+                      showToast('클립보드 내용을 성공적으로 가져왔습니다.');
                     } catch {
                       showToast('직접 상자 안에 Ctrl+V로 붙여넣어 주세요.');
                     }
                   }}
-                  className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 underline cursor-pointer"
+                  className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 underline cursor-pointer"
                 >
-                  클립보드 가져오기
+                  클립보드에서 자동 불러오기
                 </button>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setIsPasteModalOpen(false)}
-                    className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded transition-colors cursor-pointer"
+                    className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                   >
                     취소
                   </button>
@@ -491,23 +506,28 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
                     type="button"
                     onClick={handleModalApply}
                     disabled={!pasteInputText.trim()}
-                    className="px-3 py-1 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded shadow-xs transition-all cursor-pointer disabled:opacity-40"
+                    className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 rounded-lg shadow transition-all cursor-pointer disabled:opacity-40"
                   >
-                    적용하기
+                    데이터 적용하기
                   </button>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* 토스트 */}
-      {toastMessage && (
-        <div className="fixed bottom-6 left-6 z-50 flex items-center gap-2 px-3.5 py-2 bg-slate-900 text-white text-xs font-medium rounded-xl shadow-xl border border-slate-700 animate-in fade-in slide-in-from-bottom-2 duration-200">
-          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+      {/* 5. 토스트 메시지 (React Portal로 document.body 최상단에 렌더링) */}
+      {toastMessage && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed bottom-6 left-6 flex items-center gap-2 px-4 py-2.5 bg-slate-900 text-white text-xs font-medium rounded-xl shadow-2xl border border-slate-700 animate-in fade-in slide-in-from-bottom-2 duration-200"
+          style={{ zIndex: 99999 }}
+        >
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
           <span>{toastMessage}</span>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

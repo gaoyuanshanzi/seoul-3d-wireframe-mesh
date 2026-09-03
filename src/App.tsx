@@ -59,7 +59,6 @@ export function App() {
   const handleRandomize = useCallback(() => {
     const nextValues: Record<string, number> = {};
     districtNames.forEach(name => {
-      // 10만 ~ 70만 단위의 현실감 있는 통계 수치 생성
       nextValues[name] = Math.floor(Math.random() * 600 + 100) * 1000;
     });
     setRawDistrictValues(nextValues);
@@ -67,8 +66,8 @@ export function App() {
 
   return (
     <div className="w-screen h-screen flex flex-col md:flex-row overflow-hidden bg-white text-slate-900">
-      {/* 1. 왼쪽 50% 영역: 3열 스마트 스프레드시트 데이터 입력 패널 */}
-      <div className="w-full md:w-1/2 h-1/2 md:h-full flex-shrink-0 z-10 shadow-lg md:shadow-none">
+      {/* 1. 왼쪽 1/3 영역: 3열 스마트 스프레드시트 데이터 입력 패널 */}
+      <div className="w-full md:w-1/3 h-1/2 md:h-full flex-shrink-0 z-10 shadow-lg md:shadow-none border-r border-slate-200">
         <DistrictTable
           districts={districtNames}
           rawValues={rawDistrictValues}
@@ -84,8 +83,8 @@ export function App() {
         />
       </div>
 
-      {/* 2. 오른쪽 50% 영역: 3D 지도 시각화 뷰포트 (0~100 높이 반영 & 실제 data값 라벨) */}
-      <div className="w-full md:w-1/2 h-1/2 md:h-full flex-1 relative">
+      {/* 2. 오른쪽 2/3 영역: 3D 지도 시각화 뷰포트 (0~100 높이 반영 & 실제 data값 라벨) */}
+      <div className="w-full md:w-2/3 h-1/2 md:h-full flex-1 relative">
         <Map3DCanvas
           districts={parsedDistricts}
           rawValues={rawDistrictValues}
